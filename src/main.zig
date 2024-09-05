@@ -1,6 +1,7 @@
 const std = @import("std");
 const llvm = @import("llvm");
-const brainfxck = @import("root.zig");
+const lexer = @import("./token.zig");
+const codegen = @import("./codegen.zig");
 
 pub fn main() !void {
     // const context = llvm.Context.create();
@@ -32,20 +33,10 @@ pub fn main() !void {
     //
     // // module.dump(); // dump module to STDOUT
     // _ = module.printToFile("hello.ll", undefined);
-    const src =
-        \\ ++++++++++
-        \\ ++++++++++
-        \\ ++++++++++
-        \\ ++++++++++
-        \\ ++++++++++
-        \\ ++++++++++
-        \\ +++++.
-        \\ +.
-        \\ +.
-        \\ +.
-        \\ +.
-    ;
-    const tokens = try brainfxck.lexer(src, std.heap.page_allocator);
+    const src = "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.";
+    const tokens = try lexer.lexer(src, std.heap.page_allocator);
     defer tokens.deinit();
-    _ = brainfxck.codegen(tokens.items);
+    var g = codegen.init(std.heap.page_allocator);
+    defer g.deinit();
+    _ = g.codegen(tokens.items);
 }
