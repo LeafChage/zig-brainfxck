@@ -32,7 +32,20 @@ pub fn main() !void {
     //
     // // module.dump(); // dump module to STDOUT
     // _ = module.printToFile("hello.ll", undefined);
-    const src = "+++++++++++++++.";
+    const src =
+        \\ ++++++++++
+        \\ ++++++++++
+        \\ ++++++++++
+        \\ ++++++++++
+        \\ ++++++++++
+        \\ ++++++++++
+        \\ +++++.
+        \\ +.
+        \\ +.
+        \\ +.
+        \\ +.
+    ;
     const tokens = try brainfxck.lexer(src, std.heap.page_allocator);
-    _ = brainfxck.codegen(tokens);
+    defer tokens.deinit();
+    _ = brainfxck.codegen(tokens.items);
 }
