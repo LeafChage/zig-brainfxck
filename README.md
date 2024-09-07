@@ -1,5 +1,5 @@
-# BrainFuxk compiler
-Brainfuxk compiler with LLVM API
+# Brainfxck compiler
+Brainfxck compiler with LLVM API
 
 ## Test
 ```
