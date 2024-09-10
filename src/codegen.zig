@@ -4,6 +4,8 @@ const llvm = @import("llvm");
 const Token = @import("./token.zig").Token;
 const Function = @import("./llvm-util.zig").Function;
 
+const ArraySize = 30000;
+
 const Functions = std.StringHashMap(Function);
 const Variables = std.StringHashMap(llvm.Value);
 
@@ -38,31 +40,25 @@ pub fn init(alloc: std.mem.Allocator) Self {
     const getcharFunction = self.module.addFunction("getchar", getcharFunctionType);
     self.globalFunctions.put("getchar", Function.init(getcharFunctionType, getcharFunction)) catch @panic("todo");
 
+    // define printf
+    const printfFunctionType = llvm.Type.function(self.ctx.int32Type(), &[_]llvm.Type{self.ctx.ptrType(8)}, 1, true);
+    const printfFunction = self.module.addFunction("printf", printfFunctionType);
+    self.globalFunctions.put("printf", Function.init(printfFunctionType, printfFunction)) catch @panic("todo");
+
     // define function
-    const incrementPtr = self.defineFnIncrementPtr();
-    self.globalFunctions.put("incPtr", incrementPtr) catch @panic("todo");
-
-    const decrementPtr = self.defineFnDecrementPtr();
-    self.globalFunctions.put("decPtr", decrementPtr) catch @panic("todo");
-
-    const increment = self.defineFnIncrement();
-    self.globalFunctions.put("inc", increment) catch @panic("todo");
-
-    const decrement = self.defineFnDecrement();
-    self.globalFunctions.put("dec", decrement) catch @panic("todo");
-
-    const output = self.defineFnOutput();
-    self.globalFunctions.put("output", output) catch @panic("todo");
-
-    const input = self.defineFnInput();
-    self.globalFunctions.put("input", input) catch @panic("todo");
+    self.globalFunctions.put("incPtr", self.defineFnIncrementPtr()) catch @panic("todo");
+    self.globalFunctions.put("decPtr", self.defineFnDecrementPtr()) catch @panic("todo");
+    self.globalFunctions.put("inc", self.defineFnIncrement()) catch @panic("todo");
+    self.globalFunctions.put("dec", self.defineFnDecrement()) catch @panic("todo");
+    self.globalFunctions.put("output", self.defineFnOutput()) catch @panic("todo");
+    self.globalFunctions.put("input", self.defineFnInput()) catch @panic("todo");
 
     return self;
 }
 
 fn defineFnIncrementPtr(self: *Self) Function {
     const functionType = llvm.Type.function(self.ctx.voidType(), &[_]llvm.Type{
-        self.ctx.int32Type().ptr(32),
+        self.ctx.ptrType(32),
     }, 1, false);
     const function = self.module.addFunction("incPtr", functionType);
 
@@ -80,7 +76,7 @@ fn defineFnIncrementPtr(self: *Self) Function {
 
 fn defineFnDecrementPtr(self: *Self) Function {
     const functionType = llvm.Type.function(self.ctx.voidType(), &[_]llvm.Type{
-        self.ctx.int32Type().ptr(32),
+        self.ctx.ptrType(32),
     }, 1, false);
     const function = self.module.addFunction("decPtr", functionType);
 
@@ -98,8 +94,8 @@ fn defineFnDecrementPtr(self: *Self) Function {
 
 fn defineFnIncrement(self: *Self) Function {
     const functionType = llvm.Type.function(self.ctx.voidType(), &[_]llvm.Type{
-        llvm.Type.array(self.ctx.int8Type(), 255).ptr(8),
-        self.ctx.int32Type().ptr(8),
+        self.ctx.ptrType(8),
+        self.ctx.ptrType(32),
     }, 2, false);
     const function = self.module.addFunction("inc", functionType);
 
@@ -110,7 +106,7 @@ fn defineFnIncrement(self: *Self) Function {
     const index = function.getParam(1);
 
     const offset = self.builder.load(self.ctx.int32Type(), index, "index");
-    const valuePtr = self.builder.gep(self.ctx.int8Type(), ptr, &[_]llvm.Value{offset}, 1, "valuePtr");
+    const valuePtr = self.builder.gepInbounds(self.ctx.int8Type(), ptr, &[_]llvm.Value{offset}, 1, "valuePtr");
 
     const one = llvm.Value.constInt(self.ctx.int8Type(), 1, false);
 
@@ -123,8 +119,8 @@ fn defineFnIncrement(self: *Self) Function {
 
 fn defineFnDecrement(self: *Self) Function {
     const functionType = llvm.Type.function(self.ctx.voidType(), &[_]llvm.Type{
-        llvm.Type.array(self.ctx.int8Type(), 255).ptr(8),
-        self.ctx.int32Type().ptr(8),
+        self.ctx.ptrType(8),
+        self.ctx.ptrType(32),
     }, 2, false);
     const function = self.module.addFunction("dec", functionType);
 
@@ -135,8 +131,7 @@ fn defineFnDecrement(self: *Self) Function {
     const index = function.getParam(1);
 
     const offset = self.builder.load(self.ctx.int32Type(), index, "index");
-    const valuePtr = self.builder.gep(self.ctx.int8Type(), ptr, &[_]llvm.Value{offset}, 1, "valuePtr");
-
+    const valuePtr = self.builder.gepInbounds(self.ctx.int8Type(), ptr, &[_]llvm.Value{offset}, 1, "valuePtr");
     const one = llvm.Value.constInt(self.ctx.int8Type(), 1, false);
 
     const v = self.builder.load(self.ctx.int8Type(), valuePtr, "value");
@@ -156,7 +151,6 @@ fn defineFnOutput(self: *Self) Function {
     self.builder.positionAtEnd(code);
 
     const v = function.getParam(0);
-
     const fun = self.globalFunctions.get("putchar") orelse unreachable;
     _ = self.builder.call2(fun.fnType, fun.fnValue, &[_]llvm.Value{v}, 1, "tmp");
     _ = self.builder.retVoid();
@@ -166,8 +160,8 @@ fn defineFnOutput(self: *Self) Function {
 
 fn defineFnInput(self: *Self) Function {
     const functionType = llvm.Type.function(self.ctx.voidType(), &[_]llvm.Type{
-        llvm.Type.array(self.ctx.int8Type(), 255).ptr(8),
-        self.ctx.int32Type().ptr(8),
+        self.ctx.ptrType(8),
+        self.ctx.ptrType(32),
     }, 2, false);
     const function = self.module.addFunction("input", functionType);
 
@@ -178,7 +172,7 @@ fn defineFnInput(self: *Self) Function {
     const index = function.getParam(1);
 
     const offset = self.builder.load(self.ctx.int32Type(), index, "index");
-    const valuePtr = self.builder.gep(self.ctx.int8Type(), ptr, &[_]llvm.Value{offset}, 1, "valuePtr");
+    const valuePtr = self.builder.gepInbounds(self.ctx.int8Type(), ptr, &[_]llvm.Value{offset}, 1, "valuePtr");
 
     const fun = self.globalFunctions.get("getchar") orelse unreachable;
     const v = self.builder.call2(fun.fnType, fun.fnValue, &[_]llvm.Value{}, 0, "rtuGetchar");
@@ -197,79 +191,179 @@ pub fn deinit(self: *Self) void {
     defer self.globalFunctions.deinit();
 }
 
-fn innerCodegen(self: Self, mainFun: llvm.Value, beforeBlock: llvm.BasicBlock, tokens: []Token, i: usize) usize {
+fn incp(self: Self) void {
+    const fun = self.globalFunctions.get("incPtr") orelse unreachable;
+    _ = self.builder.call2(fun.fnType, fun.fnValue, &[_]llvm.Value{
+        self.globalVariables.get("index") orelse unreachable,
+    }, 1, "");
+}
+
+fn decp(self: Self) void {
+    const fun = self.globalFunctions.get("decPtr") orelse unreachable;
+    _ = self.builder.call2(fun.fnType, fun.fnValue, &[_]llvm.Value{
+        self.globalVariables.get("index") orelse unreachable,
+    }, 1, "");
+}
+
+fn inc(self: Self) void {
+    const fun = self.globalFunctions.get("inc") orelse unreachable;
+    _ = self.builder.call2(fun.fnType, fun.fnValue, &[_]llvm.Value{
+        self.globalVariables.get("ptr") orelse unreachable,
+        self.globalVariables.get("index") orelse unreachable,
+    }, 2, "");
+}
+
+fn dec(self: Self) void {
+    const fun = self.globalFunctions.get("dec") orelse unreachable;
+    _ = self.builder.call2(fun.fnType, fun.fnValue, &[_]llvm.Value{
+        self.globalVariables.get("ptr") orelse unreachable,
+        self.globalVariables.get("index") orelse unreachable,
+    }, 2, "");
+}
+
+fn output(self: Self) void {
+    const indexPtr = self.globalVariables.get("index") orelse unreachable;
+    const indexValue = self.builder.load(self.ctx.int32Type(), indexPtr, "indexPtr");
+    const arrayPtr = self.globalVariables.get("ptr") orelse unreachable;
+    const valuePtr = self.builder.gepInbounds(self.ctx.int8Type(), arrayPtr, &[_]llvm.Value{indexValue}, 1, "valuePtr");
+    const v = self.builder.load(self.ctx.int8Type(), valuePtr, "value");
+    const fun = self.globalFunctions.get("output") orelse unreachable;
+    _ = self.builder.call2(fun.fnType, fun.fnValue, &[_]llvm.Value{v}, 1, "");
+}
+fn input(self: Self) void {
+    const fun = self.globalFunctions.get("input") orelse unreachable;
+    _ = self.builder.call2(fun.fnType, fun.fnValue, &[_]llvm.Value{
+        self.globalVariables.get("ptr") orelse unreachable,
+        self.globalVariables.get("index") orelse unreachable,
+    }, 2, "");
+}
+
+fn innerBlockCodegen(self: Self, mainFun: llvm.Value, currentBlock: llvm.BasicBlock, afterBlock: llvm.BasicBlock, tokens: []Token, i: usize) usize {
     var index = i;
     while (index < tokens.len) : (index += 1) {
+        // self.dump();
         switch (tokens[index]) {
-            Token.IncP => {
-                const fun = self.globalFunctions.get("incPtr") orelse unreachable;
-                _ = self.builder.call2(fun.fnType, fun.fnValue, &[_]llvm.Value{
-                    self.globalVariables.get("index") orelse unreachable,
-                }, 1, "");
-            },
-            Token.DecP => {
-                const fun = self.globalFunctions.get("decPtr") orelse unreachable;
-                _ = self.builder.call2(fun.fnType, fun.fnValue, &[_]llvm.Value{
-                    self.globalVariables.get("index") orelse unreachable,
-                }, 1, "");
-            },
-            Token.Inc => {
-                const fun = self.globalFunctions.get("inc") orelse unreachable;
-                _ = self.builder.call2(fun.fnType, fun.fnValue, &[_]llvm.Value{
-                    self.globalVariables.get("ptr") orelse unreachable,
-                    self.globalVariables.get("index") orelse unreachable,
-                }, 2, "");
-            },
-            Token.Dec => {
-                const fun = self.globalFunctions.get("dec") orelse unreachable;
-                _ = self.builder.call2(fun.fnType, fun.fnValue, &[_]llvm.Value{
-                    self.globalVariables.get("ptr") orelse unreachable,
-                    self.globalVariables.get("index") orelse unreachable,
-                }, 2, "");
-            },
-            Token.Output => {
-                const indexPtr = self.globalVariables.get("index") orelse unreachable;
-                const indexValue = self.builder.load(self.ctx.int32Type(), indexPtr, "indexPtr");
-                const arrayPtr = self.globalVariables.get("ptr") orelse unreachable;
-                const valuePtr = self.builder.gep(self.ctx.int8Type(), arrayPtr, &[_]llvm.Value{indexValue}, 1, "valuePtr");
-                const v = self.builder.load(self.ctx.int8Type(), valuePtr, "value");
-                const fun = self.globalFunctions.get("output") orelse unreachable;
-                _ = self.builder.call2(fun.fnType, fun.fnValue, &[_]llvm.Value{v}, 1, "");
-            },
-            Token.Input => {
-                const fun = self.globalFunctions.get("input") orelse unreachable;
-                _ = self.builder.call2(fun.fnType, fun.fnValue, &[_]llvm.Value{
-                    self.globalVariables.get("ptr") orelse unreachable,
-                    self.globalVariables.get("index") orelse unreachable,
-                }, 2, "");
-            },
+            Token.IncP => self.incp(),
+            Token.DecP => self.decp(),
+            Token.Inc => self.inc(),
+            Token.Dec => self.dec(),
+            Token.Output => self.output(),
+            Token.Input => self.input(),
             Token.JumpTag => {
-                const inner = self.ctx.appendBasicBlock(mainFun, "code");
-                _ = self.builder.br(inner);
-                self.builder.positionAtEnd(inner);
-                index = self.innerCodegen(mainFun, inner, tokens, index + 1);
-            },
-            Token.IfZeroJump => {
+                const loopBlock = self.ctx.appendBasicBlock(mainFun, "loop.inner");
+                const fallthrough = self.ctx.appendBasicBlock(mainFun, "loop.fallthrough");
+
                 const indexPtr = self.globalVariables.get("index") orelse unreachable;
                 const indexValue = self.builder.load(self.ctx.int32Type(), indexPtr, "indexPtr");
 
                 const arrayPtr = self.globalVariables.get("ptr") orelse unreachable;
-                const valuePtr = self.builder.gep(self.ctx.int8Type(), arrayPtr, &[_]llvm.Value{indexValue}, 1, "valuePtr");
+                const valuePtr = self.builder.gepInbounds(self.ctx.int8Type(), arrayPtr, &[_]llvm.Value{indexValue}, 1, "valuePtr");
 
                 const v = self.builder.load(self.ctx.int8Type(), valuePtr, "value");
 
                 const zero = llvm.Value.constInt(self.ctx.int8Type(), 0, false);
                 const flag = self.builder.cmp(llvm.CompareOperator.EQ, v, zero, "flag");
 
-                const afterBlock = self.ctx.appendBasicBlock(mainFun, "outer");
-                _ = self.builder.condBr(flag, afterBlock, beforeBlock);
+                _ = self.builder.condBr(flag, fallthrough, loopBlock);
 
-                self.builder.positionAtEnd(afterBlock);
+                self.builder.positionAtEnd(loopBlock);
+                index = self.innerBlockCodegen(mainFun, loopBlock, fallthrough, tokens, index + 1);
+
+                self.builder.positionAtEnd(fallthrough);
+            },
+            Token.IfZeroJump => {
+                const indexPtr = self.globalVariables.get("index") orelse unreachable;
+                const indexValue = self.builder.load(self.ctx.int32Type(), indexPtr, "indexPtr");
+
+                const arrayPtr = self.globalVariables.get("ptr") orelse unreachable;
+                const valuePtr = self.builder.gepInbounds(self.ctx.int8Type(), arrayPtr, &[_]llvm.Value{indexValue}, 1, "valuePtr");
+
+                const v = self.builder.load(self.ctx.int8Type(), valuePtr, "value");
+
+                const zero = llvm.Value.constInt(self.ctx.int8Type(), 0, false);
+                const flag = self.builder.cmp(llvm.CompareOperator.EQ, v, zero, "flag");
+
+                _ = self.builder.condBr(flag, afterBlock, currentBlock);
+                return index;
             },
             Token.Null => unreachable,
         }
     }
     return index;
+}
+
+fn innerCodegen(self: Self, mainFun: llvm.Value, tokens: []Token, i: usize) usize {
+    var index = i;
+    while (index < tokens.len) : (index += 1) {
+        // self.dump();
+        switch (tokens[index]) {
+            Token.IncP => self.incp(),
+            Token.DecP => self.decp(),
+            Token.Inc => self.inc(),
+            Token.Dec => self.dec(),
+            Token.Output => self.output(),
+            Token.Input => self.input(),
+            Token.JumpTag => {
+                const loopBlock = self.ctx.appendBasicBlock(mainFun, "loop.inner");
+                const fallthrough = self.ctx.appendBasicBlock(mainFun, "loop.fallthrough");
+
+                const indexPtr = self.globalVariables.get("index") orelse unreachable;
+                const indexValue = self.builder.load(self.ctx.int32Type(), indexPtr, "indexPtr");
+
+                const arrayPtr = self.globalVariables.get("ptr") orelse unreachable;
+                const valuePtr = self.builder.gepInbounds(self.ctx.int8Type(), arrayPtr, &[_]llvm.Value{indexValue}, 1, "valuePtr");
+
+                const v = self.builder.load(self.ctx.int8Type(), valuePtr, "value");
+
+                const zero = llvm.Value.constInt(self.ctx.int8Type(), 0, false);
+                const flag = self.builder.cmp(llvm.CompareOperator.EQ, v, zero, "flag");
+
+                _ = self.builder.condBr(flag, fallthrough, loopBlock);
+
+                self.builder.positionAtEnd(loopBlock);
+                index = self.innerBlockCodegen(mainFun, loopBlock, fallthrough, tokens, index + 1);
+
+                self.builder.positionAtEnd(fallthrough);
+            },
+            Token.IfZeroJump => unreachable,
+            Token.Null => unreachable,
+        }
+    }
+    return index;
+}
+
+fn debugPrint(self: Self, fmt: []const u8, v: llvm.Value) void {
+    const fun = self.globalFunctions.get("printf") orelse unreachable;
+    _ = self.builder.call2(fun.fnType, fun.fnValue, &[_]llvm.Value{
+        self.builder.pointerCast(self.builder.globalString(fmt, "_"), self.ctx.ptrType(8), "_"),
+        v,
+    }, 2, "tmp");
+}
+
+fn dump(self: Self) void {
+    const fun = self.globalFunctions.get("printf") orelse unreachable;
+
+    const offsetPtr = self.globalVariables.get("index") orelse unreachable;
+    const ptr = self.globalVariables.get("ptr") orelse unreachable;
+    const fmt = "head: %ld, offset: %d, index: %ld [ %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x] \n";
+    const offset = self.builder.load(self.ctx.int32Type(), offsetPtr, "offset");
+    const args = [_]llvm.Value{
+        self.builder.pointerCast(self.builder.globalString(fmt, "_"), self.ctx.ptrType(8), "_"),
+        ptr,
+        offset,
+        self.builder.gepInbounds(self.ctx.int8Type(), ptr, &[_]llvm.Value{offset}, 1, "i"),
+        self.builder.load(self.ctx.int8Type(), self.builder.gepInbounds(self.ctx.int8Type(), ptr, &[_]llvm.Value{llvm.Value.constInt(self.ctx.int32Type(), 0, false)}, 1, "i"), "_"),
+        self.builder.load(self.ctx.int8Type(), self.builder.gepInbounds(self.ctx.int8Type(), ptr, &[_]llvm.Value{llvm.Value.constInt(self.ctx.int32Type(), 1, false)}, 1, "i"), "_"),
+        self.builder.load(self.ctx.int8Type(), self.builder.gepInbounds(self.ctx.int8Type(), ptr, &[_]llvm.Value{llvm.Value.constInt(self.ctx.int32Type(), 2, false)}, 1, "i"), "_"),
+        self.builder.load(self.ctx.int8Type(), self.builder.gepInbounds(self.ctx.int8Type(), ptr, &[_]llvm.Value{llvm.Value.constInt(self.ctx.int32Type(), 3, false)}, 1, "i"), "_"),
+        self.builder.load(self.ctx.int8Type(), self.builder.gepInbounds(self.ctx.int8Type(), ptr, &[_]llvm.Value{llvm.Value.constInt(self.ctx.int32Type(), 4, false)}, 1, "i"), "_"),
+        self.builder.load(self.ctx.int8Type(), self.builder.gepInbounds(self.ctx.int8Type(), ptr, &[_]llvm.Value{llvm.Value.constInt(self.ctx.int32Type(), 5, false)}, 1, "i"), "_"),
+        self.builder.load(self.ctx.int8Type(), self.builder.gepInbounds(self.ctx.int8Type(), ptr, &[_]llvm.Value{llvm.Value.constInt(self.ctx.int32Type(), 6, false)}, 1, "i"), "_"),
+        self.builder.load(self.ctx.int8Type(), self.builder.gepInbounds(self.ctx.int8Type(), ptr, &[_]llvm.Value{llvm.Value.constInt(self.ctx.int32Type(), 7, false)}, 1, "i"), "_"),
+        self.builder.load(self.ctx.int8Type(), self.builder.gepInbounds(self.ctx.int8Type(), ptr, &[_]llvm.Value{llvm.Value.constInt(self.ctx.int32Type(), 8, false)}, 1, "i"), "_"),
+        self.builder.load(self.ctx.int8Type(), self.builder.gepInbounds(self.ctx.int8Type(), ptr, &[_]llvm.Value{llvm.Value.constInt(self.ctx.int32Type(), 8, false)}, 1, "i"), "_"),
+    };
+    _ = self.builder.call2(fun.fnType, fun.fnValue, &args, args.len, "tmp");
 }
 
 pub fn codegen(self: *Self, tokens: []Token) void {
@@ -282,18 +376,24 @@ pub fn codegen(self: *Self, tokens: []Token) void {
     self.builder.positionAtEnd(code);
 
     // global list
-    const ptr = self.builder.alloc(llvm.Type.array(self.ctx.int8Type(), 255), "buffer");
-    const index = self.builder.alloc(self.ctx.int32Type(), "index");
+    const ptr = self.builder.arrayMalloc(
+        llvm.Type.array(self.ctx.int8Type(), ArraySize),
+        llvm.Value.constInt(self.ctx.int32Type(), ArraySize, false),
+        "buffer",
+    );
+    const index = self.builder.alloca(self.ctx.int32Type(), "index");
+
     self.globalVariables.put("ptr", ptr) catch @panic("todo");
     self.globalVariables.put("index", index) catch @panic("todo");
 
     // zero padding
-    _ = self.builder.store(llvm.Value.constInt(self.ctx.intType(8 * 255), 0, false), ptr);
+    _ = self.builder.store(llvm.Value.constInt(self.ctx.intType(8 * ArraySize), 0, false), ptr);
+    _ = self.builder.store(llvm.Value.constInt(self.ctx.intType(32), 0, false), index);
+    _ = self.innerCodegen(mainFunction, tokens, 0);
 
-    _ = self.innerCodegen(mainFunction, code, tokens, 0);
+    _ = self.builder.free(ptr);
     _ = self.builder.ret(llvm.Value.constInt(self.ctx.int32Type(), 0, false));
     // end
 
-    // self.module.dump(); // dump module to STDOUT
-    _ = self.module.printToFile("./hello.ll");
+    _ = self.module.printToFile("./a.ll");
 }

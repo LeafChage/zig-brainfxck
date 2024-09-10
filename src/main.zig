@@ -4,12 +4,17 @@ const lexer = @import("./token.zig");
 const codegen = @import("./codegen.zig");
 
 pub fn main() !void {
-    const src =
-        \\ >+++++++++[<++++++++>-]<.>+++++++[<++++>-]<+.+++++++..+++.[-]
-        \\ >++++++++[<++++>-] <.>+++++++++++[<++++++++>-]<-.--------.+++
-        \\ .------.--------.[-]>++++++++[<++++>- ]<+.[-]++++++++++.
-    ;
-    const tokens = try lexer.lexer(src, std.heap.page_allocator);
+    var args = std.process.args();
+    _ = args.skip();
+
+    const file_path = args.next() orelse @panic("you need path argument");
+
+    var buffer: [1024 * 100]u8 = undefined;
+    const data = try std.fs.cwd().readFile(file_path, &buffer);
+
+    std.debug.print("code length: {d}\n", .{data.len});
+
+    const tokens = try lexer.lexer(data, std.heap.page_allocator);
     defer tokens.deinit();
     var g = codegen.init(std.heap.page_allocator);
     defer g.deinit();
