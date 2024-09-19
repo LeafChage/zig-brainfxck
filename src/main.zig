@@ -12,8 +12,6 @@ pub fn main() !void {
     var buffer: [1024 * 100]u8 = undefined;
     const data = try std.fs.cwd().readFile(file_path, &buffer);
 
-    std.debug.print("code length: {d}\n", .{data.len});
-
     const tokens = try lexer.lexer(data, std.heap.page_allocator);
     defer tokens.deinit();
     var g = codegen.init(std.heap.page_allocator);
